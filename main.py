@@ -18,8 +18,9 @@ from .utils.decorators import async_operation_handler
 from .services.voice_processing_service import VoiceProcessingService
 from .services.permission_service import PermissionService
 from .services.stt_service import STTService
+from .services.probabilistic_reply_service import ProbabilisticReplyService
 
-@register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.2.2", "")
+@register("voice_to_text", "NickMo", "语音转文字智能回复插件", "1.2.3", "")
 class VoiceToTextPlugin(star.Star):
     """重构后的语音转文字插件 - 使用服务层架构"""
 
@@ -56,6 +57,9 @@ class VoiceToTextPlugin(star.Star):
             
             # 初始化STT服务
             self.stt_service = STTService(self.config, self.context)
+            
+            # 初始化概率性回复服务
+            self.probabilistic_reply_service = ProbabilisticReplyService(self.config)
             
             logger.info("所有服务层组件初始化完成")
             
@@ -114,8 +118,13 @@ class VoiceToTextPlugin(star.Star):
             
             # 5. 生成智能回复（仅对私聊或未开启群聊语音识别的情况）
             if self.enable_chat_reply and await self.permission_service.can_generate_reply(event):
-                async for reply in self._generate_intelligent_reply(event, transcribed_text):
-                    yield reply
+                # 使用概率性回复服务决定是否生成回复
+                session_id = event.unified_msg_origin
+                if self.probabilistic_reply_service.should_generate_reply(session_id):
+                    async for reply in self._generate_intelligent_reply(event, transcribed_text):
+                        yield reply
+                else:
+                    logger.info(f"概率性回复决策：跳过回复生成，会话: {session_id}")
                     
         except VoiceToTextError as e:
             logger.error(f"语音处理业务逻辑错误: {e}")
@@ -218,6 +227,9 @@ class VoiceToTextPlugin(star.Star):
         """清理资源"""
         try:
             self.voice_processing_service.cleanup_resources()
+            # 清理概率性回复服务的过期会话
+            if hasattr(self, 'probabilistic_reply_service'):
+                self.probabilistic_reply_service.cleanup_old_sessions()
         except Exception as e:
             logger.warning(f"资源清理失败: {e}")
     
@@ -229,6 +241,7 @@ class VoiceToTextPlugin(star.Star):
             stt_status = self.stt_service.get_stt_status()
             permission_status = await self.permission_service.get_permission_status(event.get_group_id())
             processing_status = self.voice_processing_service.get_processing_status()
+            probabilistic_reply_status = self.probabilistic_reply_service.get_reply_strategy_info()
             
             # 构建状态信息
             status_info = f"""🎙️ 语音转文字插件状态:
@@ -247,6 +260,8 @@ class VoiceToTextPlugin(star.Star):
 
                 ⚙️ 处理配置:
                 - 智能回复: {'✅ 启用' if self.enable_chat_reply else '❌ 禁用'}
+                - 概率性回复: {'✅ 启用' if probabilistic_reply_status['enabled'] else '❌ 禁用'}
+                - 回复策略: {probabilistic_reply_status['description']}
                 - 控制台输出: {'✅ 启用' if self.console_output else '❌ 禁用'}
                 - 最大文件大小: {processing_status['config']['max_file_size_mb']}MB
 
@@ -301,8 +316,12 @@ class VoiceToTextPlugin(star.Star):
             else:
                 test_results.append("✅ 权限检查: 私聊消息")
             
+            # 测试概率性回复服务
+            probabilistic_reply_info = self.probabilistic_reply_service.get_reply_strategy_info()
+            test_results.append(f"✅ 概率性回复服务: {probabilistic_reply_info['description']}")
+            
             result_text = "🧪 重构版插件功能测试结果:\n\n" + "\n".join(test_results)
-            result_text += "\n\n🏗️ 架构优势:\n- 模块化设计\n- 服务层解耦\n- 统一错误处理\n- 性能优化"
+            result_text += "\n\n🏗️ 架构优势:\n- 模块化设计\n- 服务层解耦\n- 统一错误处理\n- 性能优化\n- 概率性回复支持"
             
             yield event.plain_result(result_text)
             
@@ -328,10 +347,12 @@ class VoiceToTextPlugin(star.Star):
                 - 权限服务: {'✅ 正常' if hasattr(self, 'permission_service') else '❌ 异常'}
                 - 语音处理服务: {'✅ 正常' if hasattr(self, 'voice_processing_service') else '❌ 异常'}
                 - STT服务: {'✅ 正常' if hasattr(self, 'stt_service') else '❌ 异常'}
+                - 概率性回复服务: {'✅ 正常' if hasattr(self, 'probabilistic_reply_service') else '❌ 异常'}
 
                 📊 服务详情:
                 - STT源: {self.stt_service.stt_source if hasattr(self, 'stt_service') else '未知'}
                 - 权限状态: {await self.permission_service.get_permission_status(group_id) if hasattr(self, 'permission_service') else '未知'}
+                - 概率性回复状态: {self.probabilistic_reply_service.get_service_status() if hasattr(self, 'probabilistic_reply_service') else '未知'}
 
                 🔧 重构改进:
                 - ✅ 单一职责原则
@@ -339,7 +360,8 @@ class VoiceToTextPlugin(star.Star):
                 - ✅ 服务层架构
                 - ✅ 统一异常处理
                 - ✅ 性能优化装饰器
-                - ✅ 配置统一管理"""
+                - ✅ 配置统一管理
+                - ✅ 概率性回复机制"""
 
             yield event.plain_result(debug_info.strip())
             

@@ -222,6 +222,24 @@
         "type": "bool",
         "hint": "插件将使用 AstrBot 框架配置的人格进行回复",
         "default": true
+      },
+      "Enable_Probabilistic_Reply": {
+        "description": "启用概率性回复",
+        "type": "bool",
+        "hint": "启用后，语音识别并加入历史消息后将概率性生成回复，而不是总是回复",
+        "default": false
+      },
+      "Reply_Probability": {
+        "description": "回复概率",
+        "type": "float",
+        "hint": "设置概率性回复的概率值，范围0.0-1.0。1.0表示总是回复，0.0表示从不回复",
+        "default": 0.3,
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "condition": {
+          "field": "Chat_Reply.Enable_Probabilistic_Reply",
+          "value": true
+        }
       }
     }
   },

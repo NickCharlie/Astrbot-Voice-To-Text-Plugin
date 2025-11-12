@@ -1,7 +1,7 @@
 name: "astrbot_plugin_voice_to_text"
 author: "NickMo"
 description: "语音转文字智能回复插件(新用户一定要看README.md)，支持OpenAI、Groq、Deepgram、Azure等多种兼容OpenAI格式的STT服务提供商"
-version: "1.2.2"
+version: "1.2.3"
 repo: "https://github.com/NickCharlie/Astrbot-Voice-To-Text-Plugin"
 tags:
   - "语音识别"
